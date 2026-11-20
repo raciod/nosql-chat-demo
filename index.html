@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
+<title>NoSQL live chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+  /* Same design language as the slides: white, Roboto, thick colour bar, tinted boxes */
+  :root { --a:#7c3aed; --t:#f5f3ff; --ink:#1a1a1a; --mut:#6b7280; --line:#e5e7eb; }
+  * { box-sizing: border-box; margin: 0; }
+  [hidden] { display: none !important; }
+  html { font-size: 16px; }
+  @media (min-width: 1200px) { html { font-size: 22px; } }   /* readable on a projector */
+  body { background: #f3f4f6; color: var(--ink); font-family: Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  button, input { font: inherit; }
+  .i { width: 56px; height: 56px; fill: none; stroke: var(--a); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  .app { height: 100vh; height: 100dvh; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column;
+         background: #fff; border-inline: 1px solid var(--line); }
+  @media (min-width: 1200px) { .app { max-width: 1000px; } }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: .75rem;
+           padding: max(.9rem, env(safe-area-inset-top)) 1.1rem .8rem; }
+  h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; line-height: 1.15;
+       border-left: .5rem solid var(--a); padding-left: .8rem; }
+  h1 small { display: block; margin-top: .2rem; font-size: .8rem; font-weight: 400; letter-spacing: 0; color: var(--mut); }
+  .status { display: flex; flex-direction: column; align-items: flex-end; gap: .3rem; font-size: .8rem; color: var(--mut); white-space: nowrap; }
+  .live { display: flex; align-items: center; gap: .4rem; }
+  .dot { width: .6rem; height: .6rem; border-radius: 50%; background: #9ca3af; }
+  .dot.ok { background: #059669; } .dot.bad { background: #dc2626; }
+  .pill { font-weight: 700; font-size: .75rem; padding: .15rem .6rem; border-radius: 99px; background: #fff7ed; color: #ea580c; border: 1.5px solid #ea580c; }
+  .pill.open { background: #ecfdf5; color: #059669; border-color: #059669; }
+
+  .hostbar { display: flex; flex-wrap: wrap; gap: .5rem; padding: .6rem 1.1rem; background: var(--t); border-block: 1px solid var(--line); }
+  .btn { min-height: 44px; padding: .45rem 1rem; border: 2px solid var(--a); background: #fff; color: var(--a);
+         font-weight: 700; font-size: .9rem; border-radius: 8px; cursor: pointer; }
+  .btn.solid { background: var(--a); color: #fff; }
+  .btn.warn { --a: #ea580c; }
+
+  .note { display: flex; align-items: center; gap: .7rem; margin: .6rem 1.1rem 0; padding: .65rem 1rem;
+          border-left: .5rem solid var(--a); background: var(--t); border-radius: 0 10px 10px 0; font-size: .9rem; line-height: 1.4; }
+  .note .i { width: 28px; height: 28px; flex: none; }
+  .note.lock { --a: #ea580c; --t: #fff7ed; }
+  .note.err  { --a: #dc2626; --t: #fef2f2; }
+
+  .messages { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .6rem; }
+  .empty { margin: auto; display: flex; flex-direction: column; align-items: center; gap: .6rem; color: var(--mut); text-align: center; }
+
+  .msg { max-width: 85%; align-self: flex-start; padding: .5rem .9rem .4rem; background: var(--t);
+         border-left: .45rem solid var(--a); border-radius: 0 10px 10px 0; }
+  .msg.mine { align-self: flex-end; border-left: 0; border-right: .45rem solid var(--a); border-radius: 10px 0 0 10px; }
+  .who  { font-size: .78rem; font-weight: 700; color: var(--a); }
+  .body { font-size: 1rem; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .time { font-size: .7rem; color: var(--mut); text-align: right; }
+  .msg.new { animation: pop .18s ease-out; }
+  @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .msg.new { animation: none; } }
+
+  .composer { display: flex; gap: .5rem; padding: .7rem 1.1rem calc(.7rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: #fff; }
+  .composer input { flex: 1; min-width: 0; padding: .7rem .9rem; font-size: max(16px, 1rem);   /* 16px+ stops iPhone auto-zoom */
+         border: 2px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); }
+  .composer input:focus, .card input:focus { outline: none; border-color: var(--a); box-shadow: 0 0 0 3px var(--t); }
+  .composer .btn { padding: 0 1.3rem; border-radius: 10px; }
+  .composer input:disabled { background: #f3f4f6; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn:focus-visible { outline: 3px solid var(--a); outline-offset: 2px; }
+
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(243,244,246,.94); z-index: 10; }
+  .card { width: 100%; max-width: 400px; padding: 1.6rem; text-align: center; background: #fff; border: 2px solid var(--a); border-radius: 10px; }
+  .card .i { margin: 0 auto .5rem; }
+  .card h2 { font-size: 1.5rem; font-weight: 700; letter-spacing: -.02em; }
+  .card p { color: var(--mut); margin: .3rem 0 1rem; }
+  .card input { width: 100%; padding: .7rem .9rem; margin-bottom: .5rem; font-size: max(16px, 1rem); text-align: center;
+                border: 2px solid var(--line); border-radius: 10px; }
+  .card .err { color: #dc2626; font-size: .85rem; min-height: 1.2em; margin: 0 0 .5rem; }
+  .card .btn { width: 100%; }
+  .left { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 2.8rem; font-size: .7rem; line-height: 1.15; color: var(--mut); }
+  .left b { font-size: 1rem; color: var(--a); }
+  .left.out b { color: #ea580c; }
+  .rulebox { border: 2px solid var(--a); background: var(--t); border-radius: 10px; padding: .7rem .9rem; margin-bottom: 1rem; font-size: .95rem; line-height: 1.4; }
+  .hostlabel { align-self: center; margin-right: auto; font-size: .8rem; font-weight: 700; color: var(--a); }
+  @media (max-width: 420px) { .hostlabel { display: none; } .hostbar .btn { flex: 1; } }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="chat" viewBox="0 0 24 24"><path d="M4 5h16v11H10l-5 4v-4H4z"/></symbol>
+  <symbol id="lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="warn" viewBox="0 0 24 24"><path d="M12 3 2 20h20z"/><path d="M12 10v5M12 17.5v.5"/></symbol>
+</defs></svg>
+
+<div class="app">
+  <header>
+    <h1>Live chat<small>Every message is one document</small></h1>
+    <div class="status">
+      <span class="live"><span id="count">0 messages</span><span class="dot" id="dot"></span></span>
+      <span class="pill" id="state">Chat closed</span>
+    </div>
+  </header>
+
+  <!-- Host only: open the page with ?host=1 -->
+  <div class="hostbar" id="hostbar" hidden>
+    <span class="hostlabel">Host controls</span>
+    <button class="btn solid" id="toggleBtn">Open chat to audience</button>
+    <button class="btn warn" id="clearBtn">Clear chat</button>
+    <button class="btn" id="logoutBtn">Log out</button>
+  </div>
+
+  <div class="note lock" id="lock" hidden>
+    <svg class="i"><use href="#lock"/></svg>
+    <span id="lockText"></span>
+  </div>
+  <div class="note err" id="banner" hidden></div>
+
+  <div class="messages" id="messages"><div class="empty">Connecting...</div></div>
+
+  <div class="composer">
+    <input id="input" type="text" maxlength="280" autocomplete="off" enterkeyhint="send" placeholder="Type a message..." disabled>
+    <div class="left" id="left" hidden></div>
+    <button class="btn solid" id="sendBtn" disabled>Send</button>
+  </div>
+</div>
+
+<div id="join" class="overlay" hidden>
+  <div class="card">
+    <svg class="i"><use href="#chat"/></svg>
+    <h2>Pick a nickname</h2>
+    <p>Other people will see it next to your messages.</p>
+    <div class="rulebox"><b>You can send only 3 messages.</b> Make each one count.</div>
+    <input id="nickInput" type="text" maxlength="20" autocomplete="off" placeholder="Your nickname">
+    <p class="err" id="nickError"></p>
+    <button class="btn solid" id="joinBtn">Join the chat</button>
+  </div>
+</div>
+
+<div id="login" class="overlay" hidden>
+  <div class="card">
+    <svg class="i"><use href="#lock"/></svg>
+    <h2>Host login</h2>
+    <p>Enter the host password.</p>
+    <input id="pwInput" type="password" autocomplete="current-password" placeholder="Password">
+    <p class="err" id="pwError"></p>
+    <button class="btn solid" id="loginBtn">Log in</button>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, serverTimestamp,
+    query, where, orderBy, limitToLast, onSnapshot,
+    doc, getDoc, setDoc, getDocs, writeBatch
+  } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+  import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
+    from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAhjKlgDACJGts_waUAQrKyYhOYpjBakVY",
+    authDomain: "nosql-chat-demo.firebaseapp.com",
+    projectId: "nosql-chat-demo",
+    storageBucket: "nosql-chat-demo.firebasestorage.app",
+    messagingSenderId: "1025699884566",
+    appId: "1:1025699884566:web:11399d1755db08037e8f37"
+  };
+  const ADMIN_EMAIL = "admin@nosql-demo.com";   // must match the user you create in Firebase Authentication
+  const PW_SUFFIX = "-chat";                    // Firebase needs 6+ characters: typing "bihi" sends "bihi-chat"
+  const MAX_MSGS = 3;                           // messages allowed per person
+
+  const $ = (id) => document.getElementById(id);
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app), auth = getAuth(app);
+  const roomRef = doc(db, "settings", "room");
+
+  // The host opens  /admin  (which redirects to  /#admin)
+  const wantsAdmin = location.hash.toLowerCase() === "#admin";
+  let isAdmin = false;
+
+  const listEl = $("messages"), inputEl = $("input"), sendBtn = $("sendBtn"), leftEl = $("left");
+  const countEl = $("count"), dotEl = $("dot"), bannerEl = $("banner"), lockEl = $("lock"), stateEl = $("state");
+
+  let nickname = "", roomOpen = false, roomKnown = false;
+  let sent = 0, mineKnown = false, unsubMine = null;   // how many messages THIS nickname already sent
+  let firstRender = true, forceScroll = false, seenIds = new Set(), lastSentAt = 0, lastSnap = null;
+
+  const me = () => (isAdmin ? "Host" : nickname);
+  const left = () => Math.max(0, MAX_MSGS - sent);
+
+  const COLORS = [["#2563eb", "#eff6ff"], ["#059669", "#ecfdf5"], ["#ea580c", "#fff7ed"], ["#7c3aed", "#f5f3ff"]];
+  const colorFor = (name) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLORS[h % 4]; };
+
+  const NICK_KEY = "nosql-chat-nickname";
+  const loadNick = () => { try { return (localStorage.getItem(NICK_KEY) || "").trim(); } catch { return ""; } };
+  const saveNick = (n) => { try { localStorage.setItem(NICK_KEY, n); } catch {} };
+
+  const showBanner = (t) => { bannerEl.textContent = t; bannerEl.hidden = false; dotEl.className = "dot bad"; };
+  const hideBanner = () => { bannerEl.hidden = true; };
+
+  // ---- Count my messages: a small query "all messages where user == my nickname" ----
+  function watchMine() {
+    if (unsubMine) unsubMine();
+    unsubMine = null; sent = 0; mineKnown = false;
+    if (!nickname) return updateComposer();
+    unsubMine = onSnapshot(query(collection(db, "messages"), where("user", "==", nickname)), (s) => {
+      sent = s.size; mineKnown = true; updateComposer();
+    }, (err) => console.error(err));
+  }
+
+  // ---- Nickname (audience only) ----
+  if (!wantsAdmin) {
+    nickname = loadNick();
+    if (nickname) watchMine(); else { $("join").hidden = false; $("nickInput").focus(); }
+  }
+  function join() {
+    const n = $("nickInput").value.trim();
+    if (!n) { $("nickError").textContent = "Type a nickname to join."; return; }
+    if (n.toLowerCase() === "host") { $("nickError").textContent = "This name is reserved. Pick another one."; return; }
+    nickname = n.slice(0, 20); saveNick(nickname);
+    $("join").hidden = true; watchMine();
+  }
+  $("joinBtn").addEventListener("click", join);
+  $("nickInput").addEventListener("keydown", (e) => { if (e.key === "Enter") join(); });
+
+  // ---- Who can type? Host: always. Audience: chat open AND messages left. ----
+  function updateComposer() {
+    const canSend = isAdmin || (!!nickname && roomOpen && mineKnown && left() > 0);
+    inputEl.disabled = sendBtn.disabled = !canSend;
+    inputEl.placeholder = canSend ? "Type a message..."
+      : !nickname ? "Join to chat..." : !roomOpen ? "Chat is closed"
+      : mineKnown && left() === 0 ? "You used all your messages" : "Type a message...";
+
+    leftEl.hidden = isAdmin || !nickname || !mineKnown;
+    leftEl.className = "left" + (left() === 0 ? " out" : "");
+    leftEl.innerHTML = "<b>" + left() + "/" + MAX_MSGS + "</b>left";
+    leftEl.title = "Messages you can still send";
+
+    const used = !isAdmin && roomOpen && nickname && mineKnown && left() === 0;
+    lockEl.hidden = isAdmin || !roomKnown || (roomOpen && !used);
+    $("lockText").textContent = used
+      ? "You sent your " + MAX_MSGS + " messages. You can still read the chat."
+      : "The chat is closed. You can read everything. Writing opens when the host starts the demo.";
+    stateEl.textContent = roomOpen ? "Chat open" : "Chat closed";
+    stateEl.classList.toggle("open", roomOpen);
+  }
+  updateComposer();
+
+  // ---- Send: one message = one small document in "messages" ----
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    if (!isAdmin && (!nickname || !roomOpen || !mineKnown || left() <= 0)) return;
+    const now = Date.now();
+    if (now - lastSentAt < 1000) return;
+    lastSentAt = now;
+    inputEl.value = ""; inputEl.focus(); forceScroll = true;
+    try {
+      await addDoc(collection(db, "messages"), { user: me(), text: text.slice(0, 280), createdAt: serverTimestamp() });
+    } catch (err) { console.error(err); showBanner("Message not sent. Check your connection and try again."); }
+  }
+  sendBtn.addEventListener("click", sendMessage);
+  inputEl.addEventListener("keydown", (e) => { if (e.key === "Enter") sendMessage(); });
+
+  // ---- Listen to the open/closed switch ----
+  onSnapshot(roomRef, (snap) => {
+    roomKnown = true;
+    roomOpen = snap.exists() && snap.data().open === true;
+    updateComposer();
+    $("toggleBtn").textContent = roomOpen ? "Close chat" : "Open chat to audience";
+    $("toggleBtn").classList.toggle("solid", !roomOpen);
+  }, (err) => { console.error(err); showBanner("Cannot reach the server. Retrying..."); });
+
+  // ---- Listen to messages ----
+  onSnapshot(query(collection(db, "messages"), orderBy("createdAt", "asc"), limitToLast(100)), (snapshot) => {
+    hideBanner(); dotEl.className = "dot ok";
+    lastSnap = snapshot; renderMessages(snapshot);
+  }, (err) => { console.error(err); showBanner("Cannot reach the server. Retrying..."); });
+
+  function renderMessages(snapshot) {
+    const nearBottom = listEl.scrollHeight - listEl.scrollTop - listEl.clientHeight < 120;
+    listEl.textContent = "";
+    const newSeen = new Set();
+    snapshot.forEach((d) => {
+      const m = d.data({ serverTimestamps: "estimate" });
+      newSeen.add(d.id);
+      listEl.appendChild(buildBubble(m, !firstRender && !seenIds.has(d.id)));
+    });
+    seenIds = newSeen;
+    if (snapshot.size === 0) {
+      listEl.innerHTML = '<div class="empty"><svg class="i"><use href="#chat"/></svg><div>' + (isAdmin ? 'Waiting for the audience.<br>Messages appear here live.' : 'No messages yet.<br>Be the first to say hello.') + '</div></div>';
+    }
+    countEl.textContent = snapshot.size + (snapshot.size === 1 ? " message" : " messages");
+    if (firstRender || nearBottom || forceScroll) listEl.scrollTop = listEl.scrollHeight;
+    firstRender = forceScroll = false;
+  }
+
+  function buildBubble(m, isNew) {
+    const user = String(m.user ?? ""), [a, t] = colorFor(user);
+    const el = document.createElement("div");
+    el.className = "msg" + (user === me() ? " mine" : "") + (isNew ? " new" : "");
+    el.style.setProperty("--a", a); el.style.setProperty("--t", t);
+    const who = document.createElement("div"); who.className = "who"; who.textContent = user;
+    const body = document.createElement("div"); body.className = "body"; body.textContent = String(m.text ?? "");
+    const time = document.createElement("div"); time.className = "time";
+    const date = m.createdAt && m.createdAt.toDate ? m.createdAt.toDate() : null;
+    time.textContent = date ? date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    el.append(who, body, time);
+    return el;
+  }
+
+  // ---- Admin login: Firebase Authentication checks the password on Google's servers ----
+  async function login() {
+    const pw = $("pwInput").value;
+    if (!pw) return;
+    $("loginBtn").disabled = true; $("pwError").textContent = "";
+    try { await signInWithEmailAndPassword(auth, ADMIN_EMAIL, pw.trim() + PW_SUFFIX); }
+    catch (err) {
+      console.error(err);
+      $("pwError").textContent =
+        err.code === "auth/network-request-failed" ? "No connection. Try again."
+        : err.code === "auth/operation-not-allowed" ? "Email/Password login is not enabled in Firebase."
+        : "Wrong password. Try again.";
+    }
+    $("loginBtn").disabled = false;
+  }
+  $("loginBtn").addEventListener("click", login);
+  $("pwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+  $("logoutBtn").addEventListener("click", () => signOut(auth));
+
+  onAuthStateChanged(auth, (u) => {
+    isAdmin = wantsAdmin && !!u && u.email === ADMIN_EMAIL;
+    $("login").hidden = !wantsAdmin || isAdmin;
+    $("hostbar").hidden = !isAdmin;
+    if (wantsAdmin && !isAdmin) $("pwInput").focus();
+    if (isAdmin) {
+      // Create settings/room if missing (closed by default); never re-close an open chat
+      getDoc(roomRef)
+        .then((s) => { if (!s.exists()) return setDoc(roomRef, { open: false }); })
+        .catch((err) => console.error(err));
+    }
+    updateComposer();
+    if (lastSnap) renderMessages(lastSnap);
+  });
+
+  $("toggleBtn").addEventListener("click", async () => {
+    try { await setDoc(roomRef, { open: !roomOpen }); }
+    catch (err) { console.error(err); showBanner("Could not change the chat state. Log in again."); }
+  });
+
+  $("clearBtn").addEventListener("click", async () => {
+    if (!confirm("Delete ALL messages for everyone? Everybody gets their " + MAX_MSGS + " messages back.")) return;
+    try {
+      const snap = await getDocs(collection(db, "messages"));
+      let batch = writeBatch(db), n = 0;
+      for (const d of snap.docs) { batch.delete(d.ref); if (++n === 450) { await batch.commit(); batch = writeBatch(db); n = 0; } }
+      if (n > 0) await batch.commit();
+    } catch (err) { console.error(err); showBanner("Could not clear the chat. Log in again."); }
+  });
+
+  window.addEventListener("offline", () => showBanner("You are offline. Reconnecting..."));
+  window.addEventListener("online", () => { hideBanner(); dotEl.className = "dot ok"; });
+</script>
+</body>
+</html>

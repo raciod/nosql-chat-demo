@@ -1,0 +1,34 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Only the host (logged in with Firebase Authentication) is an admin
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'admin@nosql-demo.com';
+    }
+
+    // One document per chat message
+    match /messages/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(['user','text','createdAt'])
+                    && request.resource.data.user is string
+                    && request.resource.data.user.size() > 0
+                    && request.resource.data.user.size() <= 20
+                    && (request.resource.data.user != 'Host' || isAdmin())   // nobody else can pose as the host
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 280
+                    && request.resource.data.createdAt == request.time;
+      allow delete: if isAdmin();   // "Clear chat" is for the host only
+      allow update: if false;
+    }
+
+    // The "chat open / closed" switch: only the host can change it
+    match /settings/room {
+      allow read: if true;
+      allow write: if isAdmin()
+                   && request.resource.data.keys().hasOnly(['open'])
+                   && request.resource.data.open is bool;
+    }
+  }
+}
