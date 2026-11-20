@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // One document per chat message
+    match /messages/{id} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(['user','text','createdAt'])
+                    && request.resource.data.user is string
+                    && request.resource.data.user.size() > 0
+                    && request.resource.data.user.size() <= 20
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 280
+                    && request.resource.data.createdAt == request.time;
+      allow delete: if true;   // needed for the host's "Clear chat" button (demo only)
+      allow update: if false;
+    }
+
+    // The "chat open / closed" switch
+    match /settings/room {
+      allow read: if true;
+      allow write: if request.resource.data.keys().hasOnly(['open'])
+                   && request.resource.data.open is bool;
+    }
+  }
+}
