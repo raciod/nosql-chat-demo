@@ -143,7 +143,7 @@
     <svg class="i"><use href="#lock"/></svg>
     <h2>Host login</h2>
     <p>Enter the host password.</p>
-    <input id="pwInput" type="password" autocomplete="current-password" placeholder="Password">
+    <input id="pwInput" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Password">
     <p class="err" id="pwError"></p>
     <button class="btn solid" id="loginBtn">Log in</button>
   </div>
@@ -178,7 +178,7 @@
 
   // The host opens  /admin  (which redirects to  /#admin)
   const wantsAdmin = location.hash.toLowerCase() === "#admin";
-  window.addEventListener("hashchange", () => location.reload());
+  window.addEventListener("hashchange", () => location.reload());   // switching /  <->  /#admin reloads the page
   let isAdmin = false;
 
   const listEl = $("messages"), inputEl = $("input"), sendBtn = $("sendBtn"), leftEl = $("left");
@@ -191,22 +191,29 @@
   const me = () => (isAdmin ? "Host" : nickname);
   const left = () => Math.max(0, MAX_MSGS - sent);
 
-  const COLORS = [["#2563eb", "#eff6ff"], ["#059669", "#ecfdf5"], ["#ea580c", "#fff7ed"], ["#7c3aed", "#f5f3ff"]];
-  const colorFor = (name) => { let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLORS[h % 4]; };
+  const MINE = ["#2563eb", "#eff6ff"];                                         // my messages: always blue
+  const COLORS = [["#059669", "#ecfdf5"], ["#ea580c", "#fff7ed"], ["#7c3aed", "#f5f3ff"]];   // others: green / orange / purple (add more here)
+  const colorFor = (key) => { let h = 0; for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0; return COLORS[h % COLORS.length]; };
 
   const NICK_KEY = "nosql-chat-nickname";
   const loadNick = () => { try { return (localStorage.getItem(NICK_KEY) || "").trim(); } catch { return ""; } };
   const saveNick = (n) => { try { localStorage.setItem(NICK_KEY, n); } catch {} };
 
+  // Each device gets a random id, so two people with the same nickname are still two people
+  const UID_KEY = "nosql-chat-uid";
+  const rnd = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36));
+  const myUid = (() => { try { let v = localStorage.getItem(UID_KEY); if (!v) { v = rnd(); localStorage.setItem(UID_KEY, v); } return v; } catch { return rnd(); } })();
+  const myId = () => (isAdmin ? "host" : myUid);
+
   const showBanner = (t) => { bannerEl.textContent = t; bannerEl.hidden = false; dotEl.className = "dot bad"; };
   const hideBanner = () => { bannerEl.hidden = true; };
 
-  // ---- Count my messages: a small query "all messages where user == my nickname" ----
+  // ---- Count my messages: a small query "all messages where uid == my device id" ----
   function watchMine() {
     if (unsubMine) unsubMine();
     unsubMine = null; sent = 0; mineKnown = false;
     if (!nickname) return updateComposer();
-    unsubMine = onSnapshot(query(collection(db, "messages"), where("user", "==", nickname)), (s) => {
+    unsubMine = onSnapshot(query(collection(db, "messages"), where("uid", "==", myUid)), (s) => {
       sent = s.size; mineKnown = true; updateComposer();
     }, (err) => console.error(err));
   }
@@ -259,7 +266,7 @@
     lastSentAt = now;
     inputEl.value = ""; inputEl.focus(); forceScroll = true;
     try {
-      await addDoc(collection(db, "messages"), { user: me(), text: text.slice(0, 280), createdAt: serverTimestamp() });
+      await addDoc(collection(db, "messages"), { user: me(), uid: myId(), text: text.slice(0, 280), createdAt: serverTimestamp() });
     } catch (err) { console.error(err); showBanner("Message not sent. Check your connection and try again."); }
   }
   sendBtn.addEventListener("click", sendMessage);
@@ -299,9 +306,10 @@
   }
 
   function buildBubble(m, isNew) {
-    const user = String(m.user ?? ""), [a, t] = colorFor(user);
+    const user = String(m.user ?? ""), uid = String(m.uid ?? ""), mine = uid !== "" && uid === myId();
+    const [a, t] = mine ? MINE : colorFor(uid || user);
     const el = document.createElement("div");
-    el.className = "msg" + (user === me() ? " mine" : "") + (isNew ? " new" : "");
+    el.className = "msg" + (mine ? " mine" : "") + (isNew ? " new" : "");
     el.style.setProperty("--a", a); el.style.setProperty("--t", t);
     const who = document.createElement("div"); who.className = "who"; who.textContent = user;
     const body = document.createElement("div"); body.className = "body"; body.textContent = String(m.text ?? "");
@@ -322,8 +330,10 @@
       console.error(err);
       $("pwError").textContent =
         err.code === "auth/network-request-failed" ? "No connection. Try again."
-        : err.code === "auth/operation-not-allowed" ? "Email/Password login is not enabled in Firebase."
-        : "Wrong password. Try again.";
+        : err.code === "auth/operation-not-allowed" ? "Email/Password sign-in is not enabled in Firebase (Authentication > Sign-in method)."
+        : err.code === "auth/invalid-credential" || err.code === "auth/wrong-password" || err.code === "auth/user-not-found"
+          ? "Wrong password, or the Firebase user does not exist with this exact email and password (" + err.code + ")."
+        : "Login failed (" + err.code + ").";
     }
     $("loginBtn").disabled = false;
   }
