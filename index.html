@@ -178,6 +178,7 @@
 
   // The host opens  /admin  (which redirects to  /#admin)
   const wantsAdmin = location.hash.toLowerCase() === "#admin";
+  window.addEventListener("hashchange", () => location.reload());
   let isAdmin = false;
 
   const listEl = $("messages"), inputEl = $("input"), sendBtn = $("sendBtn"), leftEl = $("left");
