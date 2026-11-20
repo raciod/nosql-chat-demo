@@ -84,6 +84,14 @@
   .rulebox { border: 2px solid var(--a); background: var(--t); border-radius: 10px; padding: .7rem .9rem; margin-bottom: 1rem; font-size: .95rem; line-height: 1.4; }
   .hostlabel { align-self: center; margin-right: auto; font-size: .8rem; font-weight: 700; color: var(--a); }
   @media (max-width: 420px) { .hostlabel { display: none; } .hostbar .btn { flex: 1; } }
+  .overlay#qr { z-index: 20; overflow-y: auto; background: rgba(243,244,246,.97); }
+  .qrcard { position: relative; max-width: 600px; padding: 2rem 1.5rem 1.5rem; margin: auto; }
+  .qrcard .x { position: absolute; top: .6rem; right: .6rem; width: 44px; height: 44px; font-size: 1.3rem; line-height: 1;
+               border: 2px solid var(--a); background: #fff; color: var(--a); border-radius: 8px; cursor: pointer; }
+  .qrcard .x:focus-visible { outline: 3px solid var(--a); outline-offset: 2px; }
+  .qrbox { margin: 1rem auto 0; width: min(78vw, 58vh, 440px); }
+  .qrbox svg { display: block; width: 100%; height: auto; }
+  .qrurl { margin-top: 1rem; font-size: 1.15rem; font-weight: 700; color: var(--a); word-break: break-all; }
 </style>
 </head>
 <body>
@@ -108,6 +116,7 @@
     <span class="hostlabel">Host controls</span>
     <button class="btn solid" id="toggleBtn">Open chat to audience</button>
     <button class="btn warn" id="clearBtn">Clear chat</button>
+    <button class="btn" id="qrBtn">QR code</button>
     <button class="btn" id="logoutBtn">Log out</button>
   </div>
 
@@ -149,6 +158,16 @@
   </div>
 </div>
 
+<div id="qr" class="overlay" hidden>
+  <div class="card qrcard">
+    <button class="x" id="qrClose" aria-label="Close">&#10005;</button>
+    <h2>Scan to join the chat</h2>
+    <div class="qrbox" id="qrBox"></div>
+    <div class="qrurl" id="qrUrl"></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
   import {
@@ -339,6 +358,23 @@
   }
   $("loginBtn").addEventListener("click", login);
   $("pwInput").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+  // ---- QR popup: shows the PUBLIC link (no #admin) as a big QR code + big text ----
+  function drawQR() {
+    const url = location.href.split("#")[0].split("?")[0];
+    $("qrUrl").textContent = url;
+    const box = $("qrBox");
+    if (!window.qrcode) { box.textContent = "The QR library could not load. Share the link below."; return; }
+    const qr = window.qrcode(0, "M"); qr.addData(url); qr.make();
+    const n = qr.getModuleCount(), m = 2; let d = "";
+    for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) d += "M" + (c + m) + " " + (r + m) + "h1v1h-1z";
+    box.innerHTML = '<svg viewBox="0 0 ' + (n + 2 * m) + " " + (n + 2 * m) + '" shape-rendering="crispEdges" role="img" aria-label="QR code of the chat link"><rect width="100%" height="100%" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
+  }
+  const closeQR = () => { $("qr").hidden = true; };
+  $("qrBtn").addEventListener("click", () => { drawQR(); $("qr").hidden = false; $("qrClose").focus(); });
+  $("qrClose").addEventListener("click", closeQR);
+  $("qr").addEventListener("click", (e) => { if (e.target === $("qr")) closeQR(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeQR(); });
+
   $("logoutBtn").addEventListener("click", () => signOut(auth));
 
   onAuthStateChanged(auth, (u) => {
